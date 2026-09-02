@@ -1,33 +1,43 @@
 using UnityEngine;
-using TMPro; // Usamos TextMeshPro porque a fonte normal da Unity é embaçada
+using TMPro;
 
-public class HUDInspecao : MonoBehaviour
+public class HUDInteracao : MonoBehaviour
 {
-    // O Padrão Singleton: Permite que qualquer script do jogo ache a UI facilmente
-    public static HUDInspecao Instancia { get; private set; }
+    public static HUDInteracao Instancia { get; private set; }
 
-    [Header("Elementos da Tela")]
-    [SerializeField] private GameObject fundoDoPainel; // A caixinha preta translúcida
+    [Header("Painel de Inspeção (Aperte Y)")]
+    [SerializeField] private GameObject painelInspecao;
     [SerializeField] private TextMeshProUGUI textoNome;
     [SerializeField] private TextMeshProUGUI textoDescricao;
+
+    [Header("Prompt RDR2 (Canto da Tela)")]
+    [SerializeField] private GameObject painelBotoes;
+    [SerializeField] private TextMeshProUGUI textoBotoes;
 
     private void Awake()
     {
         if (Instancia == null) Instancia = this;
         else Destroy(gameObject);
 
-        Esconder(); // Começa o jogo desligado
+        EsconderInspecao();
+        EsconderBotoes();
     }
 
-    public void Mostrar(string nome, string descricao)
+    // --- CONTROLE DA INSPEÇÃO ---
+    public void MostrarInspecao(string nome, string descricao)
     {
         textoNome.text = nome;
         textoDescricao.text = descricao;
-        fundoDoPainel.SetActive(true);
+        painelInspecao.SetActive(true);
     }
+    public void EsconderInspecao() => painelInspecao.SetActive(false);
+    public bool InspecaoAberta() => painelInspecao.activeSelf;
 
-    public void Esconder()
+    // --- CONTROLE DOS BOTÕES (E, F, Y) ---
+    public void MostrarBotoes(string texto)
     {
-        fundoDoPainel.SetActive(false);
+        textoBotoes.text = texto;
+        painelBotoes.SetActive(true);
     }
+    public void EsconderBotoes() => painelBotoes.SetActive(false);
 }
