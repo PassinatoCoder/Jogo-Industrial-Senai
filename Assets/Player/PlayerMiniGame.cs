@@ -28,6 +28,7 @@ public class PlayerMinigame : MonoBehaviour
 
     [Header("Sistema de Interação")]
     [SerializeField] private Transform pontoInteracao;
+    [SerializeField] private Transform pontoMao; 
     [SerializeField] private float raioInteracao = 0.5f;
     [SerializeField] private LayerMask layerInterativo;
 
@@ -197,12 +198,44 @@ public class PlayerMinigame : MonoBehaviour
         }
     }
 
+    // =========================
+    // SISTEMA DE AÇÕES (E, F, Y)
+    // =========================
     public void AoInteragir(InputAction.CallbackContext context)
     {
-        if (context.started && objetoFocadoAtual != null)
+        if (context.started)
         {
-            // CORREÇÃO APLICADA: Agora o player manda ele mesmo (this.gameObject) como referência!
-            objetoFocadoAtual.Interagir(this.gameObject);
+            // Primeiro checa se tem algo na mão (Se tiver, a prioridade é Guardar)
+            IInteragivel itemNaMao = pontoMao.GetComponentInChildren<IInteragivel>();
+            if (itemNaMao != null)
+            {
+                itemNaMao.Interagir(this.gameObject);
+                return;
+            }
+
+            // Se a mão está vazia, tenta pegar o que está focando no chão
+            if (objetoFocadoAtual != null)
+            {
+                objetoFocadoAtual.Interagir(this.gameObject);
+            }
+        }
+    }
+
+    public void AoUsar(InputAction.CallbackContext context)
+    {
+        if (context.started)
+        {
+            IInteragivel itemNaMao = pontoMao.GetComponentInChildren<IInteragivel>();
+            if (itemNaMao != null) itemNaMao.Usar();
+        }
+    }
+
+    public void AoInspecionar(InputAction.CallbackContext context)
+    {
+        if (context.started)
+        {
+            IInteragivel itemNaMao = pontoMao.GetComponentInChildren<IInteragivel>();
+            if (itemNaMao != null) itemNaMao.Inspecionar();
         }
     }
 
