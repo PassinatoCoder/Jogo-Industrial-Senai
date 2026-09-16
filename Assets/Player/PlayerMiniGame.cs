@@ -28,22 +28,29 @@ public class PlayerMinigame : MonoBehaviour
 
     [Header("Sistema de Interação")]
     [SerializeField] private Transform pontoInteracao;
-    [SerializeField] private Transform pontoMao; 
+    [SerializeField] private Transform pontoMao;
     [SerializeField] private float raioInteracao = 0.5f;
     [SerializeField] private LayerMask layerInterativo;
 
-    private IInteragivel objetoFocadoAtual;
+    [Header("Sistema de Zonas de Guarda (Smart Tagging)")]
+    [SerializeField] private LayerMask layerZonas;
 
-    // Variáveis Internas
+    [Header("Cinto e Bolsa")]
+    [SerializeField] private CintoInventario cinto;
+    [SerializeField] private BolsaInventario bolsa;
+
+    private IInteragivel objetoFocadoAtual;
+    private ZonaDeGuarda zonaFocada;
+
     private Rigidbody2D rb;
     private BoxCollider2D colisor;
     private Vector2 inputMovimento;
     private bool estaNoChao;
+    private bool estavaNoChaoFrameAnterior;
     private float contadorCoyote;
     private float contadorJumpBuffer;
     private bool segurandoPulo;
 
-    // Variáveis matemáticas do Colisor
     private Vector2 tamanhoOriginal;
     private Vector2 offsetOriginal;
     private Vector2 tamanhoAgachado;
@@ -53,12 +60,10 @@ public class PlayerMinigame : MonoBehaviour
     {
         rb = GetComponent<Rigidbody2D>();
         colisor = GetComponent<BoxCollider2D>();
-
         rb.constraints = RigidbodyConstraints2D.FreezeRotation;
 
         tamanhoOriginal = colisor.size;
         offsetOriginal = colisor.offset;
-
         tamanhoAgachado = new Vector2(tamanhoOriginal.x, tamanhoOriginal.y / 2f);
         offsetAgachado = new Vector2(offsetOriginal.x, offsetOriginal.y - (tamanhoOriginal.y / 4f));
     }
@@ -69,6 +74,7 @@ public class PlayerMinigame : MonoBehaviour
         GerenciarTimers();
         AplicarGravidadePersonalizada();
         VerificarInteracaoAoRedor();
+        VerificarZonaAoRedor();
     }
 
     private void FixedUpdate()
@@ -76,9 +82,6 @@ public class PlayerMinigame : MonoBehaviour
         MoverPlayer();
     }
 
-    // =========================
-    // INPUT (Novo Input System)
-    // =========================
     public void AoMover(InputAction.CallbackContext context)
     {
         inputMovimento = context.ReadValue<Vector2>();
@@ -114,9 +117,6 @@ public class PlayerMinigame : MonoBehaviour
         }
     }
 
-    // =========================
-    // MOVIMENTO E FÍSICA
-    // =========================
     private void MoverPlayer()
     {
         float velocidadeAtual = estaAgachado ? (velocidadeMaxima * multiplicadorVelocidadeAgachado) : velocidadeMaxima;
@@ -153,12 +153,16 @@ public class PlayerMinigame : MonoBehaviour
         }
     }
 
-    // =========================
-    // CHÃO E TIMERS
-    // =========================
     private void VerificarChao()
     {
+        estavaNoChaoFrameAnterior = estaNoChao;
         estaNoChao = Physics2D.OverlapCircle(pontoPe.position, raioChao, layerChao);
+
+        if (estaNoChao && !estavaNoChaoFrameAnterior)
+        {
+            contadorCoyote = tempoCoyote;
+            TentarPular();
+        }
     }
 
     private void GerenciarTimers()
@@ -169,9 +173,6 @@ public class PlayerMinigame : MonoBehaviour
         contadorJumpBuffer -= Time.deltaTime;
     }
 
-    // =========================
-    // SISTEMA DE INTERAÇÃO RDR2
-    // =========================
     private void VerificarInteracaoAoRedor()
     {
         Collider2D colisorEncontrado = Physics2D.OverlapCircle(pontoInteracao.position, raioInteracao, layerInterativo);
@@ -183,7 +184,6 @@ public class PlayerMinigame : MonoBehaviour
             if (objetoEncontrado != null && objetoEncontrado != objetoFocadoAtual)
             {
                 if (objetoFocadoAtual != null) objetoFocadoAtual.MostrarAviso(false);
-
                 objetoFocadoAtual = objetoEncontrado;
                 objetoFocadoAtual.MostrarAviso(true);
             }
@@ -198,50 +198,126 @@ public class PlayerMinigame : MonoBehaviour
         }
     }
 
-    // =========================
-    // SISTEMA DE AÇÕES (E, F, Y)
-    // =========================
+    private void VerificarZonaAoRedor()
+    {
+        Collider2D colisorZona = Physics2D.OverlapCircle(pontoInteracao.position, raioInteracao, layerZonas);
+        ZonaDeGuarda zonaEncontrada = colisorZona != null ? colisorZona.GetComponent<ZonaDeGuarda>() : null;
+
+        if (zonaEncontrada != zonaFocada)
+        {
+            zonaFocada?.LimparFoco();
+            zonaFocada = zonaEncontrada;
+        }
+
+        if (zonaFocada != null)
+        {
+            IInteragivel itemNaMao = pontoMao.GetComponentInChildren<IInteragivel>();
+            ObjetoInterativo item = itemNaMao as ObjetoInterativo;
+            TipoItem tipoNaMao = item != null ? item.TipoItem : TipoItem.Generico;
+            zonaFocada.MostrarFoco(tipoNaMao, item != null);
+        }
+    }
+
+    // TECLA E — pegar do mundo / devolver ao mundo ou zona. NÃO mexe em cinto/bolsa.
     public void AoInteragir(InputAction.CallbackContext context)
     {
-        if (context.started)
+        if (!context.started || (cinto != null && cinto.EmTransicao)) return;
+
+        IInteragivel itemNaMao = pontoMao.GetComponentInChildren<IInteragivel>();
+
+        if (itemNaMao != null)
         {
-            // Primeiro checa se tem algo na mão (Se tiver, a prioridade é Guardar)
-            IInteragivel itemNaMao = pontoMao.GetComponentInChildren<IInteragivel>();
-            if (itemNaMao != null)
+            ObjetoInterativo item = itemNaMao as ObjetoInterativo;
+
+            if (zonaFocada != null && item != null)
             {
-                itemNaMao.Interagir(this.gameObject);
+                if (zonaFocada.ItemGuardadoAqui)
+                {
+                    HUDInteracao.Instancia.MostrarAvisoInvalido("Essa zona já está ocupada!");
+                }
+                else if (zonaFocada.AceitaTipo(item.TipoItem))
+                {
+                    item.GuardarNaZona(zonaFocada.PontoDeEncaixe);
+                    zonaFocada.MarcarComoOcupada(true);
+                    cinto?.LimparSeForEsteItem(item);
+                }
+                else
+                {
+                    HUDInteracao.Instancia.MostrarAvisoInvalido($"Não dá pra guardar {item.NomeDoItem} aqui!");
+                }
                 return;
             }
 
-            // Se a mão está vazia, tenta pegar o que está focando no chão
-            if (objetoFocadoAtual != null)
+            itemNaMao.Interagir(this.gameObject, pontoMao);
+
+            if (item != null && !item.EstaNaMao)
             {
-                objetoFocadoAtual.Interagir(this.gameObject);
+                cinto?.LimparSeForEsteItem(item);
             }
+            return;
+        }
+
+        if (objetoFocadoAtual != null)
+        {
+            objetoFocadoAtual.Interagir(this.gameObject, pontoMao);
+            // Pegar só deixa na mão — guardar no cinto/bolsa é ação separada (teclas G / B).
         }
     }
 
     public void AoUsar(InputAction.CallbackContext context)
     {
-        if (context.started)
-        {
-            IInteragivel itemNaMao = pontoMao.GetComponentInChildren<IInteragivel>();
-            if (itemNaMao != null) itemNaMao.Usar();
-        }
+        if (!context.started || (cinto != null && cinto.EmTransicao)) return;
+
+        IInteragivel itemNaMao = pontoMao.GetComponentInChildren<IInteragivel>();
+        if (itemNaMao != null) itemNaMao.Usar();
     }
 
     public void AoInspecionar(InputAction.CallbackContext context)
     {
-        if (context.started)
+        if (!context.started || (cinto != null && cinto.EmTransicao)) return;
+
+        IInteragivel itemNaMao = pontoMao.GetComponentInChildren<IInteragivel>();
+        if (itemNaMao != null) itemNaMao.Inspecionar();
+    }
+
+    // TECLA G — guarda no cinto pela primeira vez, ou alterna sacar/guardar se já registrado.
+    public void AoAlternarCinto(InputAction.CallbackContext context)
+    {
+        if (!context.started || cinto == null || cinto.EmTransicao) return;
+
+        if (!cinto.TemItem)
         {
             IInteragivel itemNaMao = pontoMao.GetComponentInChildren<IInteragivel>();
-            if (itemNaMao != null) itemNaMao.Inspecionar();
+            ObjetoInterativo item = itemNaMao as ObjetoInterativo;
+            if (item != null) cinto.GuardarNoCinto(item, item.IconeInventario);
+        }
+        else
+        {
+            cinto.AlternarEquipar();
         }
     }
 
-    // =========================
-    // DEBUG GIZMOS
-    // =========================
+    // TECLA B — guarda o item da mão num slot livre da bolsa (precisa estar desbloqueada).
+    public void AoGuardarNaBolsa(InputAction.CallbackContext context)
+    {
+        if (!context.started || bolsa == null || !bolsa.EstaDesbloqueada) return;
+
+        IInteragivel itemNaMao = pontoMao.GetComponentInChildren<IInteragivel>();
+        ObjetoInterativo item = itemNaMao as ObjetoInterativo;
+        if (item == null) return;
+
+        if (bolsa.Guardar(item, item.IconeInventario))
+        {
+            cinto?.LimparSeForEsteItem(item);
+        }
+    }
+
+    // TECLA I — abre/fecha a grade da bolsa.
+    public void AoAbrirBolsa(InputAction.CallbackContext context)
+    {
+        if (context.started) bolsa?.AlternarAbertura();
+    }
+
     private void OnDrawGizmosSelected()
     {
         if (pontoPe != null)

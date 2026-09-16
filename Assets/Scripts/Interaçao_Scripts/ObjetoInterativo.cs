@@ -15,15 +15,29 @@ public class ObjetoInterativo : MonoBehaviour, IInteragivel
     [SerializeField, TextArea] private string descricaoInspecao = "Descrição...";
     [SerializeField] private bool podeSerUsado = false;
 
+    [Header("Zona de Guarda (Smart Tagging)")]
+    [SerializeField] private TipoItem tipoItem = TipoItem.Generico;
+
+    [Header("Inventário de Cinto")]
+    [SerializeField] private Sprite iconeInventario;
+
     [Header("Eventos")]
-    [SerializeField] private UnityEvent aoInteragirMundo;
-    [SerializeField] private UnityEvent aoUsar;
+    [SerializeField] private UnityEvent aoAcionar;              // TipoInteracao.ApenasEvento
+    [SerializeField] private UnityEvent aoPegar;                 // Item saiu do mundo (primeira vez na mão)
+    [SerializeField] private UnityEvent aoGuardarNaZonaCorreta;  // Smart Tagging: guardado no lugar certo
+    [SerializeField] private UnityEvent aoUsar;                  // Tecla F
 
     private bool estaNaMao = false;
     private Vector3 posicaoOriginal;
     private Quaternion rotacaoOriginal;
     private Transform paiOriginal;
     private Collider2D colisor;
+
+    public TipoItem TipoItem => tipoItem;
+    public Sprite IconeInventario => iconeInventario;
+    public bool EstaNaMao => estaNaMao;
+    public string NomeDoItem => nomeDoItem;
+    public bool EhItemPegavel => tipoDeInteracao == TipoInteracao.ItemPegavel;
 
     private void Awake()
     {
@@ -40,24 +54,23 @@ public class ObjetoInterativo : MonoBehaviour, IInteragivel
         else if (!mostrar && !estaNaMao) HUDInteracao.Instancia.EsconderBotoes();
     }
 
-    public void Interagir(GameObject instigador) // TECLA E
+    public void Interagir(GameObject instigador, Transform pontoMao) // TECLA E
     {
         if (tipoDeInteracao == TipoInteracao.ApenasEvento)
         {
-            aoInteragirMundo.Invoke();
+            aoAcionar.Invoke();
             return;
         }
 
-        if (!estaNaMao) PegarItem(instigador);
+        if (!estaNaMao) PegarItem(pontoMao);
         else GuardarItem();
     }
 
-    private void PegarItem(GameObject jogador)
+    private void PegarItem(Transform maoDoJogador)
     {
         estaNaMao = true;
         colisor.enabled = false;
 
-        Transform maoDoJogador = jogador.transform.Find("PontoMao");
         if (maoDoJogador != null)
         {
             transform.SetParent(maoDoJogador);
@@ -66,7 +79,7 @@ public class ObjetoInterativo : MonoBehaviour, IInteragivel
         }
 
         AtualizarBotoesNaMao();
-        aoInteragirMundo.Invoke();
+        aoPegar.Invoke();
     }
 
     private void GuardarItem()
@@ -80,6 +93,26 @@ public class ObjetoInterativo : MonoBehaviour, IInteragivel
 
         HUDInteracao.Instancia.EsconderInspecao();
         HUDInteracao.Instancia.EsconderBotoes();
+    }
+
+    // Chamado pelo PlayerMinigame quando o item é guardado numa ZonaDeGuarda compatível.
+    public void GuardarNaZona(Transform pontoEncaixe)
+    {
+        estaNaMao = false;
+        colisor.enabled = true;
+
+        transform.SetParent(pontoEncaixe);
+        transform.localPosition = Vector3.zero;
+        transform.localRotation = Quaternion.identity;
+
+        // A zona correta vira o novo "lar" do item — uma devolução comum futura já cai aqui.
+        paiOriginal = pontoEncaixe;
+        posicaoOriginal = transform.position;
+        rotacaoOriginal = transform.rotation;
+
+        HUDInteracao.Instancia.EsconderInspecao();
+        HUDInteracao.Instancia.EsconderBotoes();
+        aoGuardarNaZonaCorreta.Invoke();
     }
 
     public void Inspecionar() // TECLA Y

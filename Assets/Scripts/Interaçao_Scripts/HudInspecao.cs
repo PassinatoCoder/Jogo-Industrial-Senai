@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using TMPro;
 
@@ -14,6 +15,13 @@ public class HUDInteracao : MonoBehaviour
     [SerializeField] private GameObject painelBotoes;
     [SerializeField] private TextMeshProUGUI textoBotoes;
 
+    [Header("Aviso de Ação Inválida (Smart Tagging)")]
+    [SerializeField] private GameObject painelAvisoInvalido;
+    [SerializeField] private TextMeshProUGUI textoAvisoInvalido;
+    [SerializeField] private float duracaoAviso = 1.5f;
+
+    private Coroutine rotinaAviso;
+
     private void Awake()
     {
         if (Instancia == null) Instancia = this;
@@ -21,9 +29,9 @@ public class HUDInteracao : MonoBehaviour
 
         EsconderInspecao();
         EsconderBotoes();
+        if (painelAvisoInvalido != null) painelAvisoInvalido.SetActive(false);
     }
 
-    // --- CONTROLE DA INSPEÇÃO ---
     public void MostrarInspecao(string nome, string descricao)
     {
         textoNome.text = nome;
@@ -33,11 +41,25 @@ public class HUDInteracao : MonoBehaviour
     public void EsconderInspecao() => painelInspecao.SetActive(false);
     public bool InspecaoAberta() => painelInspecao.activeSelf;
 
-    // --- CONTROLE DOS BOTÕES (E, F, Y) ---
     public void MostrarBotoes(string texto)
     {
         textoBotoes.text = texto;
         painelBotoes.SetActive(true);
     }
     public void EsconderBotoes() => painelBotoes.SetActive(false);
+
+    public void MostrarAvisoInvalido(string mensagem)
+    {
+        if (rotinaAviso != null) StopCoroutine(rotinaAviso);
+        rotinaAviso = StartCoroutine(RotinaAvisoInvalido(mensagem));
+    }
+
+    private IEnumerator RotinaAvisoInvalido(string mensagem)
+    {
+        textoAvisoInvalido.text = mensagem;
+        painelAvisoInvalido.SetActive(true);
+        yield return new WaitForSeconds(duracaoAviso);
+        painelAvisoInvalido.SetActive(false);
+        rotinaAviso = null;
+    }
 }
